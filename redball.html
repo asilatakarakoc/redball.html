@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Red Ball Sonsuz Oyun</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #87CEEB;
+      font-family: sans-serif;
+    }
+    #gameContainer {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+    }
+    canvas {
+      display: block;
+      background: transparent;
+    }
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: #fff;
+      text-align: center;
+    }
+    .overlay.hidden {
+      display: none;
+    }
+    .btn {
+      margin: 10px;
+      padding: 12px 24px;
+      font-size: 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .btn-play { background: #4CAF50; color: #fff; }
+    .btn-play:hover { background: #45A049; }
+    .btn-color { background: #2196F3; color: #fff; }
+    .btn-color:hover { background: #1976D2; }
+    .btn-menu { background: #FFC107; color: #000; }
+    .btn-menu:hover { background: #FFB300; }
+    .colors {
+      display: grid;
+      grid-template-columns: repeat(5, 60px);
+      grid-gap: 15px;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .colorBall {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid #fff;
+      box-sizing: border-box;
+      transition: transform 0.2s;
+    }
+    .colorBall:hover { transform: scale(1.1); }
+    /* Add styles for the sound toggle button */
+    .sound-toggle {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: #4CAF50;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background 0.3s;
+    }
+    .sound-toggle.off {
+      background: #f44336;
+    }
+    /* Add styles for the music toggle button */
+    .music-toggle {
+      position: absolute;
+      top: 50px;
+      right: 10px;
+      background: #4CAF50;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background 0.3s;
+    }
+    .music-toggle.off {
+      background: #f44336;
+    }
+    .game-title {
+      font-size: 48px;
+      font-weight: bold;
+      color: #FF4500;
+      text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5);
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <canvas id="gameCanvas"></canvas>
+    <button id="soundToggle" class="sound-toggle">Sound: On</button>
+    <button id="musicToggle" class="music-toggle">Music: On</button>
+    <div id="mainMenu" class="overlay">
+      <h1 class="game-title">Red Ball Infinite Journey</h1>
+      <button id="playBtnMenu" class="btn btn-play">Play</button>
+      <button id="chooseBtn" class="btn btn-color">Choose Ball Color</button>
+    </div>
+    <div id="colorMenu" class="overlay hidden">
+      <h1>Choose Color</h1>
+      <div class="colors" id="colorContainer"></div>
+      <button id="backToMain" class="btn btn-menu">Back to Menu</button>
+    </div>
+    <div id="gameOverMenu" class="overlay hidden">
+      <h1>GAME OVER</h1>
+      <p id="finalScore" style="font-size:24px; margin-bottom:10px;"></p>
+      <p id="bestScore" style="font-size:20px; margin-bottom:20px;"></p>
+      <button id="playAgainBtn" class="btn btn-play">Play Again</button>
+      <button id="mainMenuBtn" class="btn btn-menu">Main Menu</button>
+    </div>
+  </div>
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    let virtualWidth = 800, virtualHeight = 400;
+    canvas.width = virtualWidth;
+    canvas.height = virtualHeight;
+    function resizeCanvas() {
+      const scale = Math.min(window.innerWidth / virtualWidth, window.innerHeight / virtualHeight);
+      const pixelRatio = window.devicePixelRatio || 1;
+      canvas.width = virtualWidth * pixelRatio;
+      canvas.height = virtualHeight * pixelRatio;
+      canvas.style.width = `${virtualWidth}px`;
+      canvas.style.height = `${virtualHeight}px`;
+      ctx.scale(pixelRatio, pixelRatio);
+      canvas.style.transform = `scale(${scale})`;
+      canvas.style.transformOrigin = "top left";
+      canvas.style.position = "absolute";
+      canvas.style.left = `${(window.innerWidth - virtualWidth * scale) / 2}px`;
+      canvas.style.top = `${(window.innerHeight - virtualHeight * scale) / 2}px`;
+    }
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let soundEnabled = true; // Track sound state
+    const soundToggle = document.getElementById("soundToggle");
+
+    soundToggle.addEventListener("click", () => {
+      soundEnabled = !soundEnabled;
+      soundToggle.textContent = `Sound: ${soundEnabled ? "On" : "Off"}`;
+      soundToggle.classList.toggle("off", !soundEnabled);
+    });
+
+    function playJumpSound() {
+      if (!soundEnabled) return; // Play sound only if enabled
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.1);
+    }
+
+    function playCollisionSound() {
+      if (!soundEnabled) return; // Play sound only if enabled
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.2);
+    }
+
+    function playBirdSound() {
+      if (!soundEnabled) return; // Play sound only if enabled
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.2);
+    }
+
+    let musicEnabled = true; // Track music state
+    const musicToggle = document.getElementById("musicToggle");
+    let backgroundMusic; // Reference to the background music
+    let melodyNotes = [
+      440, 494, 523, 587, 659, 523, 494, 440, // A4, B4, C5, D5, E5, C5, B4, A4
+      392, 440, 494, 440, 392, 349, 392, 440  // G4, A4, B4, A4, G4, F4, G4, A4
+    ]; // A more dynamic melody
+    let melodyDurations = [
+      0.4, 0.4, 0.4, 0.4, 0.6, 0.4, 0.4, 0.6, // Durations for each note in seconds
+      0.4, 0.4, 0.4, 0.4, 0.6, 0.4, 0.4, 0.6
+    ];
+    let melodyIndex = 0; // Track the current note in the melody
+    let melodyInterval; // Reference to the melody interval
+
+    musicToggle.addEventListener("click", () => {
+      musicEnabled = !musicEnabled;
+      musicToggle.textContent = `Music: ${musicEnabled ? "On" : "Off"}`;
+      musicToggle.classList.toggle("off", !musicEnabled);
+      if (musicEnabled) {
+        playBackgroundMusic();
+      } else {
+        stopBackgroundMusic();
+      }
+    });
+
+    function playBackgroundMusic() {
+      if (!musicEnabled) return;
+      if (!melodyInterval) {
+        melodyInterval = setInterval(() => {
+          if (!musicEnabled) return;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = "triangle"; // Use a triangle wave for a richer sound
+          osc.frequency.setValueAtTime(melodyNotes[melodyIndex], audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.05, audioCtx.currentTime); // Low volume
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + melodyDurations[melodyIndex]); // Play each note for its duration
+          melodyIndex = (melodyIndex + 1) % melodyNotes.length; // Move to the next note
+        }, 500); // Play a new note every 500ms
+      }
+    }
+
+    function stopBackgroundMusic() {
+      if (melodyInterval) {
+        clearInterval(melodyInterval); // Stop the melody
+        melodyInterval = null;
+      }
+    }
+
+    const mainMenu = document.getElementById("mainMenu");
+    const colorMenu = document.getElementById("colorMenu");
+    const gameOverMenu = document.getElementById("gameOverMenu");
+    const playBtnMenu = document.getElementById("playBtnMenu");
+    const chooseBtn = document.getElementById("chooseBtn");
+    const backToMain = document.getElementById("backToMain");
+    const playAgainBtn = document.getElementById("playAgainBtn");
+    const mainMenuBtn = document.getElementById("mainMenuBtn");
+    const finalScore = document.getElementById("finalScore");
+    const bestScore = document.getElementById("bestScore");
+    const colorContainer = document.getElementById("colorContainer");
+    const colors = ["red", "orange", "yellow", "green", "blue", "purple", "pink", "brown", "gray", "black"];
+    let ballColor = "red";
+    let gameRunning = false;
+
+    const ball = { 
+      x: 50, 
+      y: 300, 
+      prevY: 300, 
+      r: 20, 
+      vx: 0, 
+      vy: 0, 
+      speed: 0.5, // Reduced initial speed for gradual acceleration
+      maxSpeed: 8, // Set a speed limit
+      acceleration: 0.1, // Acceleration rate
+      jump: 12, 
+      onGround: false 
+    };
+    const gravity = 0.5, friction = 0.8, maxVD = 100, maxHG = 200, pMinY = 150, pMaxY = 350, pWMin = 50, pWMax = 200;
+    let keys = {}, cameraX = 0, score = 0, highScore = parseInt(localStorage.getItem("rbHighScore")) || 0, gameOver = false;
+    let platforms = [], mountains = [], clouds = [];
+    let birds = []; // Array to store birds
+    const birdSpeed = 3; // Speed of the birds
+    const birdSpawnInterval = 5000; // Birds spawn every 5 seconds
+    let birdSpawnTimer; // Timer for spawning birds
+    let ballRotation = 0; // Track the ball's rotation
+
+    function showOverlay(overlay) {
+      mainMenu.classList.add("hidden");
+      colorMenu.classList.add("hidden");
+      gameOverMenu.classList.add("hidden");
+      overlay.classList.remove("hidden");
+    }
+
+    colors.forEach(c => {
+      const div = document.createElement("div");
+      div.className = "colorBall";
+      div.style.background = c;
+      div.onclick = () => { ballColor = c; showOverlay(mainMenu); };
+      colorContainer.appendChild(div);
+    });
+
+    playBtnMenu.onclick = () => startGame();
+    chooseBtn.onclick = () => showOverlay(colorMenu);
+    backToMain.onclick = () => showOverlay(mainMenu);
+    playAgainBtn.onclick = () => startGame();
+    mainMenuBtn.onclick = () => showOverlay(mainMenu);
+
+    function resetGame() {
+      cameraX = 0;
+      score = 0;
+      gameOver = false;
+      gameRunning = true;
+      ball.x = 50;
+      ball.y = 300;
+      ball.vx = ball.vy = 0;
+      ball.prevY = ball.y;
+      ball.onGround = false;
+      platforms = [{ x: -100, y: 380, width: 1000, height: 20 }];
+      mountains = [];
+      clouds = [];
+      birds = [];
+      stopBirdSpawning(); // Stop any existing bird spawning
+      startBirdSpawning(); // Restart bird spawning
+      if (musicEnabled) playBackgroundMusic(); // Start music if enabled
+    }
+
+    function startGame() {
+      resetGame();
+      showOverlay(document.createElement("div"));
+    }
+
+    document.addEventListener("keydown", (e) => {
+      keys[e.code] = true;
+      if (e.code === "KeyA" || e.code === "KeyD" || e.code === "Space") {
+        e.preventDefault(); // Prevent default browser behavior for these keys
+      }
+    });
+
+    document.addEventListener("keyup", (e) => {
+      keys[e.code] = false;
+    });
+
+    function generatePlatforms() {
+      let last = platforms[platforms.length - 1];
+      while (last.x < ball.x + virtualWidth) {
+        const gap = Math.random() * maxHG;
+        const w = Math.random() * (pWMax - pWMin) + pWMin;
+        const dy = (Math.random() * 2 - 1) * maxVD;
+        let y = last.y + dy;
+        y = Math.max(pMinY, Math.min(pMaxY, y));
+        platforms.push({ x: last.x + last.width + gap, y, width: w, height: 10 });
+        last = platforms[platforms.length - 1];
+      }
+    }
+
+    function generateBackground() {
+      const maxX = cameraX + virtualWidth * 2;
+      let lastMountain = mountains.length ? mountains[mountains.length - 1].x : -400;
+      let lastCloud = clouds.length ? clouds[clouds.length - 1].x : -300;
+      while (lastMountain < maxX) {
+        lastMountain += 400;
+        mountains.push({ x: lastMountain, height: 100 + Math.random() * 50 });
+      }
+      while (lastCloud < maxX) {
+        lastCloud += 300;
+        clouds.push({ x: lastCloud, y: 50 + Math.random() * 50, size: 30 + Math.random() * 20 });
+      }
+    }
+
+    function drawBackground() {
+      generateBackground();
+      const grad = ctx.createLinearGradient(0, 0, 0, virtualHeight);
+      grad.addColorStop(0, "#87CEEB");
+      grad.addColorStop(1, "#E0FFFF");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, virtualWidth, virtualHeight);
+
+      ctx.save();
+      ctx.translate(-cameraX * 0.5, 0);
+      mountains.forEach((m) => {
+        const baseY = 380;
+        ctx.beginPath();
+        ctx.moveTo(m.x, baseY);
+        ctx.lineTo(m.x + 200, baseY - m.height);
+        ctx.lineTo(m.x + 400, baseY);
+        ctx.closePath();
+        ctx.fillStyle = "#556B2F";
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(m.x + 200, baseY - m.height);
+        ctx.lineTo(m.x + 230, baseY - m.height + 30);
+        ctx.lineTo(m.x + 170, baseY - m.height + 30);
+        ctx.closePath();
+        ctx.fillStyle = "#6B8E23";
+        ctx.fill();
+      });
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(-cameraX * 0.2, 0);
+      clouds.forEach((c) => {
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.size, 0, Math.PI * 2);
+        ctx.arc(c.x + c.size, c.y + 10, c.size * 0.8, 0, Math.PI * 2);
+        ctx.arc(c.x + c.size * 2, c.y, c.size, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,255,255,0.8)";
+        ctx.fill();
+      });
+      ctx.restore();
+
+      ctx.fillStyle = "#228B22";
+      ctx.fillRect(0, 380, virtualWidth, 20);
+    }
+
+    function spawnBird() {
+      const birdY = Math.random() * (virtualHeight - 100) + 50; // Random Y position
+      const birdX = cameraX + virtualWidth + 50; // Spawn birds relative to the player's location
+      birds.push({ x: birdX, y: birdY, size: 20, wingFlap: 0 });
+      playBirdSound(); // Play bird sound on spawn
+    }
+
+    function startBirdSpawning() {
+      birdSpawnTimer = setInterval(spawnBird, birdSpawnInterval); // Start spawning birds
+    }
+
+    function stopBirdSpawning() {
+      clearInterval(birdSpawnTimer); // Stop spawning birds
+    }
+
+    function updateBirds() {
+      birds.forEach((bird) => {
+        bird.x -= birdSpeed; // Move bird to the left
+        bird.wingFlap += 0.1; // Update wing flap animation
+      });
+      birds = birds.filter((bird) => bird.x + bird.size > 0); // Remove birds that go off-screen
+    }
+
+    function drawBirds() {
+      birds.forEach((bird) => {
+        const wingOffset = Math.sin(bird.wingFlap) * 10; // Wing flap animation
+
+        // Draw bird body (rectangle)
+        ctx.fillStyle = "black";
+        ctx.fillRect(bird.x - bird.size / 2, bird.y - bird.size / 4, bird.size, bird.size / 2);
+
+        // Draw wings
+        ctx.fillStyle = "gray";
+        ctx.beginPath();
+        ctx.moveTo(bird.x - bird.size / 2, bird.y);
+        ctx.lineTo(bird.x - bird.size, bird.y - 10 + wingOffset);
+        ctx.lineTo(bird.x - bird.size, bird.y + 10 - wingOffset);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(bird.x + bird.size / 2, bird.y);
+        ctx.lineTo(bird.x + bird.size, bird.y - 10 + wingOffset);
+        ctx.lineTo(bird.x + bird.size, bird.y + 10 - wingOffset);
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw beak (on the left)
+        ctx.fillStyle = "orange";
+        ctx.beginPath();
+        ctx.moveTo(bird.x - bird.size / 2, bird.y);
+        ctx.lineTo(bird.x - bird.size / 2 - 10, bird.y - 5);
+        ctx.lineTo(bird.x - bird.size / 2 - 10, bird.y + 5);
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw eyes
+        ctx.fillStyle = "white";
+        ctx.beginPath();
+        ctx.arc(bird.x - bird.size / 4, bird.y - bird.size / 8, 3, 0, Math.PI * 2); // Left eye
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(bird.x + bird.size / 4, bird.y - bird.size / 8, 3, 0, Math.PI * 2); // Right eye
+        ctx.fill();
+
+        ctx.fillStyle = "black";
+        ctx.beginPath();
+        ctx.arc(bird.x - bird.size / 4, bird.y - bird.size / 8, 1.5, 0, Math.PI * 2); // Left pupil
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(bird.x + bird.size / 4, bird.y - bird.size / 8, 1.5, 0, Math.PI * 2); // Right pupil
+        ctx.fill();
+      });
+    }
+
+    function checkBirdCollision() {
+      birds.forEach((bird) => {
+        const dx = bird.x - ball.x;
+        const dy = bird.y - ball.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < bird.size + ball.r) {
+          gameRunning = false;
+          gameOver = true;
+          stopBirdSpawning(); // Stop bird spawning when the game ends
+          playCollisionSound(); // Play collision sound
+          finalScore.textContent = "Score: " + score;
+          bestScore.textContent = "High Score: " + highScore;
+          showOverlay(gameOverMenu);
+        }
+      });
+    }
+
+    function drawBall() {
+      ctx.save();
+      ctx.translate(ball.x, ball.y); // Move to the ball's position
+      ctx.rotate(ballRotation); // Rotate the ball based on its movement
+
+      // Draw the ball
+      ctx.beginPath();
+      ctx.arc(0, 0, ball.r, 0, Math.PI * 2);
+      ctx.fillStyle = ballColor;
+      ctx.fill();
+      ctx.closePath();
+
+      // Draw eyes
+      ctx.fillStyle = "white";
+      ctx.beginPath();
+      ctx.arc(-7, -5, 3, 0, Math.PI * 2); // Left eye
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(7, -5, 3, 0, Math.PI * 2); // Right eye
+      ctx.fill();
+
+      ctx.fillStyle = "black";
+      ctx.beginPath();
+      ctx.arc(-7, -5, 1.5, 0, Math.PI * 2); // Left pupil
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(7, -5, 1.5, 0, Math.PI * 2); // Right pupil
+      ctx.fill();
+
+      // Draw smiling mouth
+      ctx.beginPath();
+      ctx.arc(0, 5, 7, 0, Math.PI, false); // Smile
+      ctx.strokeStyle = "black";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.closePath();
+
+      ctx.restore();
+    }
+
+    function update() {
+      if (!gameRunning) return;
+
+      ball.prevY = ball.y;
+
+      // Support for A and D keys for left and right movement
+      if (keys.ArrowLeft || keys.KeyA) {
+        ball.vx = Math.max(ball.vx - ball.acceleration, -ball.maxSpeed);
+      } else if (keys.ArrowRight || keys.KeyD) {
+        ball.vx = Math.min(ball.vx + ball.acceleration, ball.maxSpeed);
+      } else {
+        ball.vx *= friction;
+      }
+
+      // Support for Space key for jumping
+      if ((keys.Space || keys.KeyW || keys.ArrowUp) && ball.onGround) {
+        ball.vy = -ball.jump;
+        ball.onGround = false;
+        playJumpSound();
+      }
+
+      ball.vy += gravity;
+      ball.x += ball.vx;
+      ball.y += ball.vy;
+
+      ball.onGround = false;
+
+      platforms.forEach((p) => {
+        const prevB = ball.prevY + ball.r;
+        const currB = ball.y + ball.r;
+        const withinX = ball.x + ball.r > p.x && ball.x - ball.r < p.x + p.width;
+        if (ball.vy >= 0 && prevB <= p.y && currB >= p.y && withinX) {
+          ball.y = p.y - ball.r;
+          ball.vy = 0;
+          ball.onGround = true;
+        }
+      });
+
+      generatePlatforms();
+      platforms = platforms.filter((p) => p.x + p.width > ball.x - virtualWidth / 2);
+      cameraX = Math.max(0, ball.x - virtualWidth / 2);
+      score = Math.max(score, Math.floor(ball.x));
+
+      // Update ball rotation based on horizontal velocity
+      ballRotation += ball.vx / ball.r;
+
+      if (ball.y - ball.r > virtualHeight) {
+        gameRunning = false;
+        gameOver = true;
+        stopBirdSpawning();
+        stopBackgroundMusic(); // Stop background music when the game ends
+        playCollisionSound();
+        if (score > highScore) {
+          highScore = score;
+          localStorage.setItem("rbHighScore", highScore);
+        }
+        finalScore.textContent = "Score: " + score;
+        bestScore.textContent = "High Score: " + highScore;
+        showOverlay(gameOverMenu);
+      }
+
+      updateBirds();
+      checkBirdCollision();
+
+      // Ensure music stops if the game is over
+      if (gameOver) {
+        stopBackgroundMusic();
+      }
+    }
+
+    function draw() {
+      drawBackground();
+      ctx.save();
+      ctx.translate(-cameraX, 0);
+      ctx.fillStyle = "saddlebrown";
+      platforms.forEach((p) => ctx.fillRect(p.x, p.y, p.width, p.height));
+      drawBall(); // Draw the ball with rotation
+      drawBirds();
+      ctx.restore();
+      ctx.fillStyle = "#000";
+      ctx.font = "18px sans-serif";
+      ctx.fillText("Score: " + score, 10, 20);
+      ctx.fillText("High Score: " + highScore, 10, 40);
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    loop();
+  </script>
+</body>
+</html>
+
